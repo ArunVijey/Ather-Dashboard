@@ -1,0 +1,16 @@
+{
+  "name": "Ather Cost Tracker",
+  "short_name": "Ather Cost",
+  "description": "Track Ather 450X rides, charging cost and petrol savings",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#02050c",
+  "theme_color": "#02050c",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

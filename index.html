@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#02050c">
+<meta name="description" content="Ather 450X ride, charging & savings tracker">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<title>Ather Cost Tracker</title>
+<style>
+/* ============================================================
+   ATHER 450X COST TRACKER
+   Design system: scientific "turbo" colormap on solver-navy.
+   Cold end (#21c7ff) = EV · Hot end (#ff9038) = petrol.
+   ============================================================ */
+:root{
+  --bg:#02050c; --bg-2:#050b18; --panel:#081120; --panel-2:#0c1a30;
+  --line:#10203a; --line-2:#1e3a63;
+  --ink:#e9f2fc; --dim:#9db3cc; --faint:#5a7392;
+  --cold:#21c7ff; --cold-deep:#0e7fd9;
+  --hot:#ff9038; --hot-deep:#ff5c1f;
+  --ok:#54f0a8; --lime:#a9fc3e;
+  --turbo:linear-gradient(90deg,#30123b 0%,#4147cd 14%,#2bb5e8 30%,#2ef09c 46%,#a9fc3e 60%,#fbb938 74%,#e8491c 88%,#7a0403 100%);
+  --ease:cubic-bezier(.22,.75,.2,1);
+  --r:5px;
+  --disp:'Archivo',sans-serif;
+  --body:'Instrument Sans',sans-serif;
+  --mono:'IBM Plex Mono',monospace;
+  color-scheme:dark;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{background:var(--bg)}
+body{
+  background:var(--bg); color:var(--ink); font-family:var(--body);
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
+  overflow-x:hidden; overscroll-behavior-y:contain;
+  padding-bottom:calc(104px + env(safe-area-inset-bottom));
+}
+::selection{background:var(--cold);color:#021019}
+:focus-visible{outline:2px solid var(--cold);outline-offset:3px;border-radius:3px}
+
+/* ---- engineering mesh + film grain ---- */
+body::before{
+  content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(33,199,255,.05) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(33,199,255,.05) 1px,transparent 1px);
+  background-size:46px 46px;
+  mask-image:radial-gradient(ellipse 130% 95% at 50% 0%,#000 30%,transparent 82%);
+  -webkit-mask-image:radial-gradient(ellipse 130% 95% at 50% 0%,#000 30%,transparent 82%);
+}
+body::after{
+  content:"";position:fixed;inset:0;z-index:999;pointer-events:none;opacity:.04;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.turbo-strip{position:fixed;top:0;left:0;right:0;height:3px;z-index:101;background-image:var(--turbo)}
+
+/* ---- mono labels ---- */
+.mono{font-family:var(--mono);font-weight:500;letter-spacing:.16em;text-transform:uppercase;font-size:.68rem}
+
+/* ============ BOOT LOADER ============ */
+#loader{
+  position:fixed;inset:0;z-index:2000;background:var(--bg);
+  display:flex;align-items:center;justify-content:center;
+  transition:transform .65s var(--ease),opacity .5s;
+}
+#loader.done{transform:translateY(-100%);opacity:.4;pointer-events:none}
+.boot{font-family:var(--mono);font-size:.74rem;letter-spacing:.06em;color:var(--dim);width:min(340px,84vw)}
+.boot-line{opacity:0;transform:translateY(6px);transition:.35s var(--ease);margin:7px 0;display:flex;gap:10px}
+.boot-line.on{opacity:1;transform:none}
+.boot-line .ok{color:var(--ok)}
+.boot-line .val{color:var(--cold)}
+.boot-bar{height:3px;background:var(--line);border-radius:2px;margin-top:16px;overflow:hidden}
+.boot-bar i{display:block;height:100%;width:0%;background-image:var(--turbo);transition:width .55s linear}
+
+/* ============ HEADER ============ */
+header{padding:26px 18px 8px;display:flex;align-items:center;gap:12px;
+  max-width:560px;margin:0 auto;position:relative;z-index:1}
+.brand-dot{width:9px;height:9px;border-radius:50%;background:var(--cold);
+  box-shadow:0 0 14px var(--cold);animation:pulse 2.4s infinite;flex-shrink:0}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+header .hgroup{flex:1;min-width:0}
+header h1{font-family:var(--disp);font-variation-settings:"wdth" 118;font-weight:800;
+  font-size:1.18rem;letter-spacing:.01em;text-transform:uppercase;line-height:1.1;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header .sub{font-family:var(--mono);color:var(--faint);font-size:.58rem;
+  letter-spacing:.22em;text-transform:uppercase;margin-top:3px}
+header .iter{font-family:var(--mono);font-size:.62rem;letter-spacing:.12em;
+  color:var(--faint);text-align:right;text-transform:uppercase;line-height:1.6}
+header .iter b{color:var(--cold);font-weight:500}
+
+main{padding:0 14px;max-width:560px;margin:0 auto;position:relative;z-index:1}
+.view{display:none}
+.view.active{display:block}
+.view.active>*{animation:rise .6s var(--ease) both}
+.view.active>*:nth-child(2){animation-delay:.06s}
+.view.active>*:nth-child(3){animation-delay:.12s}
+.view.active>*:nth-child(4){animation-delay:.18s}
+.view.active>*:nth-child(5){animation-delay:.24s}
+.view.active>*:nth-child(6){animation-delay:.30s}
+.view.active>*:nth-child(7){animation-delay:.36s}
+@keyframes rise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+
+/* ============ CARDS / PANELS ============ */
+.card{position:relative;border:1px solid var(--line);border-radius:var(--r);
+  background:linear-gradient(180deg,var(--panel),var(--bg-2));
+  padding:18px;margin:12px 0}
+.card h3{margin:0 0 14px;font-family:var(--mono);font-weight:500;font-size:.62rem;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--faint);
+  display:flex;align-items:center;gap:10px}
+.card h3::before{content:"";width:26px;height:1px;background:var(--cold);flex-shrink:0}
+.card h3 i{font-style:normal;color:var(--hot);letter-spacing:.14em}
+
+/* case panel (hero) */
+.case{padding:0;overflow:hidden}
+.case-head{display:flex;justify-content:space-between;align-items:center;
+  padding:12px 18px;border-bottom:1px solid var(--line);
+  font-family:var(--mono);font-size:.6rem;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--faint);background:rgba(33,199,255,.04)}
+.case-head .lights{display:flex;gap:6px}
+.case-head .lights i{width:8px;height:8px;border-radius:50%;background:var(--line-2)}
+.case-head .lights i:first-child{background:var(--ok)}
+.case-body{padding:18px}
+.eyelabel{font-family:var(--mono);font-size:.62rem;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--cold);display:inline-flex;align-items:center;gap:10px}
+.eyelabel::before{content:"";width:26px;height:1px;background:var(--cold)}
+.hero .big{font-family:var(--disp);font-variation-settings:"wdth" 122;font-weight:800;
+  font-size:2.7rem;line-height:1.05;letter-spacing:-.02em;margin:10px 0 8px;
+  color:var(--ok);text-shadow:0 0 28px rgba(84,240,168,.35)}
+.hero .big.neg{color:var(--hot-deep);text-shadow:0 0 24px rgba(255,92,31,.35)}
+.hero .cmp{font-family:var(--mono);color:var(--faint);font-size:.62rem;
+  letter-spacing:.1em;text-transform:uppercase;line-height:2}
+.hero .cmp b{color:var(--ink);font-weight:500}
+.hero .turbo-bar{height:3px;border-radius:2px;background-image:var(--turbo);
+  margin-top:14px;opacity:.9}
+
+/* stat grid */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.stat{position:relative;border:1px solid var(--line);border-radius:var(--r);
+  background:linear-gradient(180deg,var(--panel),var(--bg-2));padding:14px 16px;
+  overflow:hidden;transition:transform .25s var(--ease),border-color .25s}
+.stat:active{transform:scale(.97)}
+.stat::before{content:"";position:absolute;top:0;left:0;width:46%;height:2px;
+  background:linear-gradient(90deg,var(--sc,var(--cold)),transparent)}
+.stat .l{font-family:var(--mono);color:var(--faint);font-size:.56rem;
+  letter-spacing:.16em;text-transform:uppercase;margin-bottom:6px}
+.stat .v{font-family:var(--disp);font-variation-settings:"wdth" 112;font-weight:700;
+  font-size:1.5rem;letter-spacing:-.01em;line-height:1;font-variant-numeric:tabular-nums}
+.stat .v .u{font-family:var(--mono);font-size:.58rem;color:var(--faint);
+  font-weight:500;letter-spacing:.1em;margin-left:4px;text-transform:uppercase}
+.stat.s-ok{--sc:var(--ok)} .stat.s-hot{--sc:var(--hot)} .stat.s-lime{--sc:var(--lime)}
+
+/* recovery bar — turbo colormap fill */
+.bar-wrap{position:relative;background:var(--line);border-radius:2px;height:12px;
+  overflow:hidden;margin:12px 0 10px;border:1px solid var(--line-2)}
+.bar-fill{position:relative;height:100%;background-image:var(--turbo);
+  background-size:100% 100%;transition:width 1.1s var(--ease)}
+.bar-fill::after{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg,rgba(255,255,255,.28) 0 4px,transparent 4px 14px);
+  animation:streamflow 1.4s linear infinite;opacity:.35}
+@keyframes streamflow{to{transform:translateX(14px)}}
+.tick{position:absolute;top:0;bottom:0;width:1px;background:rgba(233,242,252,.16)}
+.bar-meta{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+  font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint)}
+.bar-meta b{color:var(--cold);font-weight:500;font-variant-numeric:tabular-nums}
+#dRecStatus{color:var(--hot)}
+#dRecStatus.ok{color:var(--ok)}
+
+canvas{width:100%;height:200px;display:block}
+.legend{display:flex;align-items:center;gap:16px;margin-top:12px;
+  font-family:var(--mono);font-size:.58rem;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--faint)}
+.legend span{display:inline-flex;align-items:center}
+.legend span::before{content:"";display:inline-block;width:9px;height:9px;
+  border-radius:2px;margin-right:7px}
+.legend .lg-ev::before{background:var(--cold);box-shadow:0 0 8px rgba(33,199,255,.6)}
+.legend .lg-pet::before{background:var(--hot);box-shadow:0 0 8px rgba(255,144,56,.5)}
+.legend .lbar{flex:1;height:6px;border-radius:2px;background-image:var(--turbo);
+  border:1px solid rgba(255,255,255,.12);min-width:60px}
+
+.split{display:flex;gap:12px}
+.split>div{flex:1;border:1px solid var(--line);border-radius:var(--r);
+  background:rgba(5,11,24,.6);padding:12px 14px}
+.split .v{font-family:var(--disp);font-variation-settings:"wdth" 112;font-weight:700;
+  font-size:1.2rem;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.split .l{font-family:var(--mono);color:var(--faint);font-size:.56rem;margin-top:4px;
+  text-transform:uppercase;letter-spacing:.14em}
+.split>div:first-child{border-color:rgba(84,240,168,.25)}
+.split>div:first-child .v{color:var(--ok)}
+.split>div:last-child{border-color:rgba(255,144,56,.25)}
+.split>div:last-child .v{color:var(--hot)}
+
+/* ---- forms ---- */
+label{display:block;font-family:var(--mono);color:var(--faint);font-size:.56rem;
+  margin:13px 0 5px;text-transform:uppercase;letter-spacing:.16em;font-weight:500}
+input,select,textarea{width:100%;background:rgba(5,11,24,.66);border:1px solid var(--line);
+  border-radius:4px;color:var(--ink);padding:12px 12px;font-size:.9rem;outline:none;
+  font-family:var(--mono);font-weight:400;letter-spacing:.02em;
+  transition:border-color .25s,box-shadow .25s,background .25s}
+input:focus{border-color:var(--cold);background:rgba(33,199,255,.05);
+  box-shadow:0 0 0 3px rgba(33,199,255,.12),0 0 18px rgba(33,199,255,.1)}
+input::placeholder{color:rgba(90,115,146,.6)}
+.row{display:flex;gap:11px}
+.row>div{flex:1}
+.btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;
+  border:none;border-radius:3px;padding:14px;margin-top:16px;cursor:pointer;
+  font-family:var(--mono);font-size:.72rem;letter-spacing:.13em;
+  text-transform:uppercase;font-weight:600;
+  background:linear-gradient(120deg,var(--cold),var(--cold-deep));color:#021019;
+  transition:.3s var(--ease)}
+.btn:active{transform:scale(.97);filter:brightness(1.15);
+  box-shadow:0 0 34px rgba(33,199,255,.45)}
+.btn.ghost{background:rgba(5,11,24,.6);color:var(--ink);border:1px solid var(--line-2)}
+.btn.ghost:active{border-color:var(--cold);color:var(--cold);
+  box-shadow:0 0 30px rgba(33,199,255,.2)}
+.btn.danger{background:transparent;color:var(--hot);border:1px solid var(--hot)}
+.btn.danger:active{background:var(--hot);color:#1a0c02;
+  box-shadow:0 0 30px rgba(255,144,56,.35)}
+.btn.small{padding:11px;font-size:.64rem;margin-top:9px}
+
+/* segmented — solver mode buttons */
+.seg{position:relative;display:flex;background:rgba(5,11,24,.66);
+  border:1px solid var(--line);border-radius:4px;padding:4px;margin-bottom:6px}
+.segpill{position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);
+  border-radius:3px;background:rgba(33,199,255,.1);border:1px solid var(--cold);
+  box-shadow:0 0 16px rgba(33,199,255,.18);
+  transition:transform .35s var(--ease)}
+.seg button{flex:1;position:relative;z-index:1;background:transparent;border:none;
+  color:var(--faint);padding:10px;font-family:var(--mono);font-size:.64rem;
+  letter-spacing:.14em;text-transform:uppercase;font-weight:500;cursor:pointer;
+  transition:color .25s}
+.seg button.on{color:var(--cold)}
+
+/* ---- list items ---- */
+.item{display:flex;align-items:center;gap:13px;padding:13px 2px;
+  border-bottom:1px dashed var(--line);
+  animation:itemIn .45s var(--ease) both;
+  animation-delay:calc(var(--i,0) * 45ms)}
+@keyframes itemIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+.item:last-child{border-bottom:none}
+.item .ico{width:42px;height:30px;border-radius:3px;display:flex;align-items:center;
+  justify-content:center;flex-shrink:0;font-family:var(--mono);font-size:.58rem;
+  font-weight:600;letter-spacing:.12em}
+.ico.ride{color:var(--cold);background:rgba(33,199,255,.08);border:1px solid rgba(33,199,255,.3)}
+.ico.home{color:var(--ok);background:rgba(84,240,168,.07);border:1px solid rgba(84,240,168,.3)}
+.ico.fast{color:var(--hot);background:rgba(255,144,56,.08);border:1px solid rgba(255,144,56,.35)}
+.item .mid{flex:1;min-width:0}
+.item .t1{font-weight:600;font-size:.92rem;font-family:var(--body)}
+.item .t2{font-family:var(--mono);color:var(--faint);font-size:.62rem;letter-spacing:.04em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.item .amt{text-align:right;font-family:var(--disp);font-variation-settings:"wdth" 110;
+  font-weight:700;font-size:.98rem;font-variant-numeric:tabular-nums}
+.item .del{background:none;border:none;color:var(--faint);font-size:.95rem;
+  padding:8px;cursor:pointer;border-radius:3px;transition:color .2s,background .2s}
+.item .del:active{color:var(--hot);background:rgba(255,144,56,.1)}
+.chip{display:inline-block;background:rgba(5,11,24,.66);border:1px solid var(--line);
+  border-radius:3px;padding:1px 7px;font-family:var(--mono);font-size:.56rem;
+  letter-spacing:.08em;color:var(--faint);margin:2px 4px 0 0}
+.empty{font-family:var(--mono);color:var(--faint);text-align:center;padding:26px 10px;
+  font-size:.66rem;letter-spacing:.1em;border:1px dashed var(--line-2);border-radius:4px}
+
+/* ---- nav dock ---- */
+nav{position:fixed;bottom:calc(12px + env(safe-area-inset-bottom));left:14px;right:14px;
+  max-width:532px;margin:0 auto;z-index:100;display:flex;padding:7px;
+  background:rgba(2,5,12,.92);backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line-2);border-radius:6px;
+  box-shadow:0 12px 44px rgba(0,0,0,.6)}
+#navPill{position:absolute;top:7px;bottom:7px;border-radius:3px;
+  background:rgba(33,199,255,.1);border:1px solid var(--cold);
+  box-shadow:0 0 16px rgba(33,199,255,.18);
+  transition:left .38s var(--ease),width .38s var(--ease)}
+nav button{flex:1;position:relative;z-index:1;background:none;border:none;
+  color:var(--faint);font-family:var(--mono);font-size:.52rem;font-weight:500;
+  letter-spacing:.14em;text-transform:uppercase;
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:9px 0 8px;cursor:pointer;transition:color .3s}
+nav button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;transition:transform .3s var(--ease),filter .3s}
+nav button.on{color:var(--cold)}
+nav button.on svg{transform:translateY(-1px);filter:drop-shadow(0 0 7px rgba(33,199,255,.7))}
+
+/* ---- toast & sparks ---- */
+#toast{position:fixed;left:50%;bottom:calc(108px + env(safe-area-inset-bottom));
+  transform:translateX(-50%) translateY(24px);
+  background:rgba(5,11,24,.92);backdrop-filter:blur(10px);color:var(--ink);
+  padding:11px 20px;border-radius:3px;font-family:var(--mono);font-size:.64rem;
+  letter-spacing:.12em;text-transform:uppercase;font-weight:500;
+  opacity:0;pointer-events:none;border:1px solid var(--cold);
+  box-shadow:0 8px 30px rgba(0,0,0,.5),0 0 20px rgba(33,199,255,.14);
+  transition:.35s var(--ease);z-index:998}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.spark{position:fixed;width:6px;height:6px;border-radius:1px;z-index:1000;pointer-events:none}
+
+.note{font-family:var(--mono);color:var(--faint);font-size:.6rem;letter-spacing:.06em;
+  margin-top:12px;line-height:1.8}
+h2.sec{font-family:var(--disp);font-variation-settings:"wdth" 112;font-weight:700;
+  font-size:1.05rem;letter-spacing:0;line-height:1;text-transform:uppercase;
+  margin:24px 6px 6px;display:flex;align-items:baseline;gap:12px}
+h2.sec::after{content:"";flex:1;height:1px;background:var(--line-2)}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001s !important;
+    animation-iteration-count:1 !important;transition-duration:.001s !important}
+}
+</style>
+</head>
+<body>
+<div class="turbo-strip"></div>
+
+<div id="loader"><div class="boot">
+  <div class="boot-line">&gt; mounting telemetry <span class="ok">✓</span></div>
+  <div class="boot-line">&gt; <span class="val" id="bootN">0 rides · 0 charges</span> loaded <span class="ok">✓</span></div>
+  <div class="boot-line">&gt; computing savings …</div>
+  <div class="boot-bar"><i id="bootBar"></i></div>
+</div></div>
+
+<header>
+  <div class="brand-dot"></div>
+  <div class="hgroup">
+    <h1 id="hdrName">Ather 450X</h1>
+    <div class="sub">COST // SAVINGS TRACKER</div>
+  </div>
+  <div class="iter"><span id="hdrDate"></span><br>Σ <b id="hdrKm">0</b> km</div>
+</header>
+
+<main>
+  <!-- ============ DASHBOARD ============ -->
+  <section class="view active" id="view-dash">
+    <div class="card case hero">
+      <div class="case-head"><span>TELEMETRY · SAVINGS.LOG</span>
+        <span class="lights"><i></i><i></i><i></i></span></div>
+      <div class="case-body">
+        <span class="eyelabel">Saved vs petrol</span>
+        <div class="big" id="dSavings">₹0</div>
+        <div class="cmp">Petrol equiv <b id="dPetrol">₹0</b> · EV spent <b id="dEv">₹0</b></div>
+        <div class="turbo-bar"></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="stat"><div class="l">Total distance</div><div class="v"><span id="dKm">0</span><span class="u">km</span></div></div>
+      <div class="stat s-ok"><div class="l">Running cost</div><div class="v"><span id="dCpk">₹0</span><span class="u">/km</span></div></div>
+      <div class="stat s-hot"><div class="l">Energy charged</div><div class="v"><span id="dUnits">0</span><span class="u">units</span></div></div>
+      <div class="stat s-lime"><div class="l">Avg efficiency</div><div class="v"><span id="dEff">–</span><span class="u">km/unit</span></div></div>
+    </div>
+
+    <div class="card">
+      <h3><i>02</i>Scooter cost recovery</h3>
+      <div class="bar-wrap">
+        <div class="bar-fill" id="dRecBar" style="width:0%"></div>
+        <div class="tick" style="left:25%"></div><div class="tick" style="left:50%"></div><div class="tick" style="left:75%"></div>
+      </div>
+      <div class="bar-meta"><b id="dRecPct">0.00% recovered</b>
+        <span id="dRecStatus">● RECOVERING</span>
+        <span id="dRecTarget">of ₹2,26,211</span></div>
+      <div class="note">Savings vs petrol counted towards what the scooter cost you.</div>
+    </div>
+
+    <div class="card">
+      <h3><i>03</i>Monthly · EV vs petrol</h3>
+      <canvas id="chart"></canvas>
+      <div class="legend"><span class="lg-ev">EV charge</span><span class="lg-pet">Petrol equiv</span><span class="lbar"></span></div>
+    </div>
+
+    <div class="card">
+      <h3><i>04</i>Charging spend split</h3>
+      <div class="split">
+        <div><div class="v" id="dHomeSpend">₹0</div><div class="l" id="dHomeMeta">Home · 0 sessions</div></div>
+        <div><div class="v" id="dFastSpend">₹0</div><div class="l" id="dFastMeta">Fast · 0 sessions</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3><i>05</i>Recent activity</h3>
+      <div id="dRecent"></div>
+    </div>
+  </section>
+
+  <!-- ============ RIDES ============ -->
+  <section class="view" id="view-rides">
+    <div class="card">
+      <h3><i>01</i><span id="rideFormTitle">Log a ride</span></h3>
+      <div class="row">
+        <div><label>Date</label><input type="date" id="rDate"></div>
+        <div><label>Distance (km)</label><input type="number" step="0.1" inputmode="decimal" id="rKm" placeholder="20.5"></div>
+      </div>
+      <div class="row">
+        <div><label>Duration (min)</label><input type="number" inputmode="numeric" id="rMin" placeholder="55"></div>
+        <div><label>Avg speed (km/h)</label><input type="number" step="0.1" inputmode="decimal" id="rSpd" placeholder="auto"></div>
+      </div>
+      <div class="row">
+        <div><label>Efficiency (km/unit)</label><input type="number" step="0.1" inputmode="decimal" id="rEff" placeholder="42"></div>
+        <div><label>Eco mode (km)</label><input type="number" step="0.1" inputmode="decimal" id="rEco" placeholder="4.3"></div>
+      </div>
+      <div class="row">
+        <div><label>Ride mode (km)</label><input type="number" step="0.1" inputmode="decimal" id="rRide" placeholder="16.2"></div>
+        <div><label>Notes</label><input type="text" id="rNotes" placeholder="Home → IIT"></div>
+      </div>
+      <button class="btn" id="rSave">Save ride</button>
+      <button class="btn ghost small" id="rCancel" style="display:none">Cancel edit</button>
+    </div>
+    <h2 class="sec">Ride history</h2>
+    <div class="card" id="rideList"></div>
+  </section>
+
+  <!-- ============ CHARGING ============ -->
+  <section class="view" id="view-charge">
+    <div class="card">
+      <div class="seg">
+        <div class="segpill" id="segPill"></div>
+        <button id="segHome" class="on">HOME · AC</button>
+        <button id="segFast">GRID · DC</button>
+      </div>
+
+      <div id="homeForm">
+        <h3><i>01</i><span id="homeFormTitle">Home charging session</span></h3>
+        <div class="row">
+          <div><label>Date</label><input type="date" id="hDate"></div>
+          <div><label>Rate (₹/unit)</label><input type="number" step="0.01" inputmode="decimal" id="hRate"></div>
+        </div>
+        <div class="row">
+          <div><label>Battery from (%)</label><input type="number" inputmode="numeric" id="hFrom" placeholder="20"></div>
+          <div><label>Battery to (%)</label><input type="number" inputmode="numeric" id="hTo" placeholder="80"></div>
+        </div>
+        <div class="row">
+          <div><label>Units (kWh)</label><input type="number" step="0.01" inputmode="decimal" id="hUnits" placeholder="auto from %"></div>
+          <div><label>Cost (₹)</label><input type="number" step="0.01" inputmode="decimal" id="hCost" placeholder="auto"></div>
+        </div>
+        <label>Notes</label><input type="text" id="hNotes" placeholder="optional">
+        <button class="btn" id="hSave">Save home charge</button>
+        <button class="btn ghost small" id="hCancel" style="display:none">Cancel edit</button>
+        <div class="note">Enter % from/to and units + cost fill in automatically (you can still edit them), or type units directly.</div>
+      </div>
+
+      <div id="fastForm" style="display:none">
+        <h3><i>01</i><span id="fastFormTitle">Fast charging session</span></h3>
+        <div class="row">
+          <div><label>Date</label><input type="date" id="fDate"></div>
+          <div><label>Location</label><input type="text" id="fLoc" placeholder="Ather Grid – Adyar"></div>
+        </div>
+        <div class="row">
+          <div><label>Units (kWh)</label><input type="number" step="0.01" inputmode="decimal" id="fUnits" placeholder="2.5"></div>
+          <div><label>Amount paid (₹)</label><input type="number" step="0.01" inputmode="decimal" id="fCost" placeholder="45"></div>
+        </div>
+        <label>Notes</label><input type="text" id="fNotes" placeholder="optional">
+        <button class="btn" id="fSave">Save fast charge</button>
+        <button class="btn ghost small" id="fCancel" style="display:none">Cancel edit</button>
+      </div>
+    </div>
+    <h2 class="sec">Charging history</h2>
+    <div class="card" id="chargeList"></div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section class="view" id="view-settings">
+    <div class="card">
+      <h3><i>01</i>Vehicle</h3>
+      <label>Scooter name</label><input type="text" id="sName">
+      <div class="row">
+        <div><label>Battery capacity (kWh)</label><input type="number" step="0.1" inputmode="decimal" id="sBatt"></div>
+        <div><label>Charger efficiency (%)</label><input type="number" inputmode="numeric" id="sChgEff"></div>
+      </div>
+      <label>Total cost of scooter (₹) — incl. add-ons, insurance, EMI interest</label>
+      <input type="number" inputmode="numeric" id="sVehCost">
+      <div class="note">Charger efficiency accounts for wall-to-battery losses when converting % charged into units drawn from your meter. 90% is typical.</div>
+    </div>
+    <div class="card">
+      <h3><i>02</i>Prices</h3>
+      <div class="row">
+        <div><label>Electricity rate (₹/unit)</label><input type="number" step="0.01" inputmode="decimal" id="sRate"></div>
+        <div><label>Petrol price (₹/litre)</label><input type="number" step="0.01" inputmode="decimal" id="sPetrol"></div>
+      </div>
+      <label>Petrol scooter mileage (km/l) for comparison</label>
+      <input type="number" step="0.1" inputmode="decimal" id="sMileage">
+      <button class="btn" id="sSave">Save settings</button>
+    </div>
+    <div class="card">
+      <h3><i>03</i>Data</h3>
+      <button class="btn ghost small" id="expJson">⬇ Backup data (JSON)</button>
+      <button class="btn ghost small" id="expCsv">⬇ Export CSV (rides + charges)</button>
+      <button class="btn ghost small" id="impJson">⬆ Restore from backup</button>
+      <input type="file" id="impFile" accept=".json" style="display:none">
+      <button class="btn danger small" id="wipe">Delete all data</button>
+      <div class="note">Data lives only on this device (browser storage). Take a JSON backup now and then — restoring it brings everything back on any device.</div>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <div id="navPill"></div>
+  <button data-v="dash" class="on"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Dash</button>
+  <button data-v="rides"><svg viewBox="0 0 24 24"><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="5" r="2.2"/><path d="M8 19h6a4 4 0 0 0 0-8H9a3.5 3.5 0 0 1 0-7h6"/></svg>Rides</button>
+  <button data-v="charge"><svg viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11L9.5 22 19 9.5h-6.5L13 2z"/></svg>Charge</button>
+  <button data-v="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>Config</button>
+</nav>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- State ---------- */
+const DEFAULTS = {
+  name:"Ather 450X", batt:3.7, chgEff:90, rate:8, petrol:105, mileage:50, vehCost:226211
+};
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem("atherTracker");
+    if(raw){ const d = JSON.parse(raw);
+      d.settings = Object.assign({}, DEFAULTS, d.settings||{});
+      d.rides = d.rides||[]; d.charges = d.charges||[];
+      return d;
+    }
+  }catch(e){}
+  return {settings:{...DEFAULTS}, rides:[], charges:[]};
+}
+function save(){ localStorage.setItem("atherTracker", JSON.stringify(S)); }
+const $ = id => document.getElementById(id);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const inr = n => "₹" + (Math.round(n)).toLocaleString("en-IN");
+const inr2 = n => "₹" + n.toLocaleString("en-IN",{maximumFractionDigits:2});
+const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
+const todayStr = () => new Date().toISOString().slice(0,10);
+const fmtDate = d => new Date(d+"T00:00").toLocaleDateString("en-IN",{day:"numeric",month:"short"});
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(t._x); t._x=setTimeout(()=>t.classList.remove("show"),1800); }
+
+/* ---------- Boot loader (solver style) ---------- */
+(function boot(){
+  const L = $("loader");
+  if(reduceMotion()){ L.remove(); return; }
+  $("bootN").textContent = S.rides.length+" rides · "+S.charges.length+" charges";
+  document.querySelectorAll(".boot-line").forEach((l,i)=>
+    setTimeout(()=>l.classList.add("on"), 90+i*150));
+  setTimeout(()=>{ $("bootBar").style.width="100%"; }, 180);
+  setTimeout(()=>L.classList.add("done"), 1000);
+  setTimeout(()=>L.remove(), 1750);
+})();
+
+/* ---------- Delight: count-up numbers & spark bursts ---------- */
+function countUp(el, target, fmt, dur=800){
+  cancelAnimationFrame(el._raf);
+  const from = el._cur || 0;
+  if(reduceMotion() || Math.abs(target-from) < 0.0001){
+    el._cur = target; el.textContent = fmt(target); return;
+  }
+  const t0 = performance.now();
+  const step = t => {
+    const p = Math.min(1,(t-t0)/dur), e = 1-Math.pow(1-p,3);
+    const v = from + (target-from)*e;
+    el.textContent = fmt(v); el._cur = v;
+    if(p<1) el._raf = requestAnimationFrame(step);
+  };
+  el._raf = requestAnimationFrame(step);
+}
+function burst(el){
+  if(reduceMotion()) return;
+  const r = el.getBoundingClientRect();
+  const cx = r.left + r.width/2, cy = r.top + r.height/2;
+  const colors = ["#21c7ff","#ff9038","#54f0a8","#a9fc3e","#2bb5e8"];
+  for(let i=0;i<16;i++){
+    const s = document.createElement("i"); s.className = "spark";
+    const a = Math.random()*Math.PI*2, d = 46 + Math.random()*72;
+    s.style.left = cx+"px"; s.style.top = cy+"px";
+    s.style.background = colors[i%colors.length];
+    s.style.boxShadow = "0 0 8px "+colors[i%colors.length];
+    document.body.appendChild(s);
+    s.animate([
+      {transform:"translate(-50%,-50%) rotate(0deg) scale(1)", opacity:1},
+      {transform:`translate(calc(-50% + ${Math.cos(a)*d}px), calc(-50% + ${Math.sin(a)*d-34}px)) rotate(${180+Math.random()*360}deg) scale(0)`, opacity:0}
+    ], {duration:620+Math.random()*340, easing:"cubic-bezier(.22,.75,.2,1)"}).onfinish = ()=>s.remove();
+  }
+}
+
+/* ---------- Navigation (dock + sliding pill) ---------- */
+const navBtns = [...document.querySelectorAll("nav button")];
+function movePill(btn){
+  const p = $("navPill");
+  p.style.left = btn.offsetLeft+"px"; p.style.width = btn.offsetWidth+"px";
+}
+navBtns.forEach(b=>{
+  b.onclick = () => {
+    navBtns.forEach(x=>x.classList.remove("on"));
+    document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));
+    b.classList.add("on"); movePill(b);
+    $("view-"+b.dataset.v).classList.add("active");
+    if(b.dataset.v==="dash") renderDash();
+    window.scrollTo({top:0});
+  };
+});
+addEventListener("resize", ()=>movePill(document.querySelector("nav button.on")));
+if(document.fonts && document.fonts.ready)
+  document.fonts.ready.then(()=>movePill(document.querySelector("nav button.on")));
+
+/* ---------- Stats ---------- */
+function stats(){
+  const st = S.settings;
+  const totalKm = S.rides.reduce((a,r)=>a+num(r.km),0);
+  const evCost  = S.charges.reduce((a,c)=>a+num(c.cost),0);
+  const units   = S.charges.reduce((a,c)=>a+num(c.units),0);
+  const petrolCost = st.mileage>0 ? totalKm/st.mileage*st.petrol : 0;
+  const savings = petrolCost - evCost;
+  let effKm=0, effUnits=0;
+  S.rides.forEach(r=>{ if(num(r.eff)>0){ effKm+=num(r.km); effUnits+=num(r.km)/num(r.eff); }});
+  const avgEff = effUnits>0 ? effKm/effUnits : 0;
+  const home = S.charges.filter(c=>c.type==="home");
+  const fast = S.charges.filter(c=>c.type==="fast");
+  return { totalKm, evCost, units, petrolCost, savings, avgEff,
+    cpk: totalKm>0 ? evCost/totalKm : 0,
+    homeSpend: home.reduce((a,c)=>a+num(c.cost),0), homeN: home.length,
+    fastSpend: fast.reduce((a,c)=>a+num(c.cost),0), fastN: fast.length };
+}
+
+/* ---------- Dashboard ---------- */
+function renderDash(){
+  const x = stats(), st = S.settings;
+  $("hdrName").textContent = st.name;
+  countUp($("hdrKm"), x.totalKm, v=>Math.round(v).toLocaleString("en-IN"));
+  const sv = $("dSavings");
+  sv.classList.toggle("neg", x.savings<0);
+  countUp(sv, x.savings, v => (v<0?"−":"") + inr(Math.abs(v)), 950);
+  countUp($("dPetrol"), x.petrolCost, v=>inr(v));
+  countUp($("dEv"), x.evCost, v=>inr(v));
+  countUp($("dKm"), x.totalKm, v=>v.toLocaleString("en-IN",{maximumFractionDigits:1}));
+  countUp($("dCpk"), x.cpk, v=>"₹"+v.toFixed(2));
+  countUp($("dUnits"), x.units, v=>v.toLocaleString("en-IN",{maximumFractionDigits:1}));
+  if(x.avgEff>0) countUp($("dEff"), x.avgEff, v=>v.toFixed(1));
+  else { $("dEff").textContent="–"; $("dEff")._cur=0; }
+  const pct = st.vehCost>0 ? Math.max(0, x.savings/st.vehCost*100) : 0;
+  requestAnimationFrame(()=>{ $("dRecBar").style.width = Math.min(100,pct)+"%"; });
+  countUp($("dRecPct"), pct, v=>v.toFixed(2)+"% recovered", 1100);
+  const rs = $("dRecStatus");
+  if(pct>=100){ rs.textContent="✓ RECOVERED"; rs.classList.add("ok"); }
+  else { rs.textContent="● RECOVERING"; rs.classList.remove("ok"); }
+  $("dRecTarget").textContent = "of "+inr(st.vehCost);
+  countUp($("dHomeSpend"), x.homeSpend, v=>inr(v));
+  $("dHomeMeta").textContent = "Home · "+x.homeN+" session"+(x.homeN===1?"":"s");
+  countUp($("dFastSpend"), x.fastSpend, v=>inr(v));
+  $("dFastMeta").textContent = "Fast · "+x.fastN+" session"+(x.fastN===1?"":"s");
+  renderRecent(); animateChart();
+}
+function renderRecent(){
+  const items = [
+    ...S.rides.map(r=>({d:r.date, k:"ride", o:r})),
+    ...S.charges.map(c=>({d:c.date, k:c.type, o:c}))
+  ].sort((a,b)=> b.d.localeCompare(a.d)).slice(0,5);
+  $("dRecent").innerHTML = items.length ? items.map((it,i)=>{
+    if(it.k==="ride") return row("ride","RID", fmtDate(it.d)+" · Ride",
+      num(it.o.km)+" km"+(it.o.eff?" · "+it.o.eff+" km/unit":""), "", i);
+    const c=it.o, tag=c.type==="home"?"HOM":"DCF";
+    return row(c.type, tag, fmtDate(c.d)+" · "+(c.type==="home"?"Home charge":"Fast charge"),
+      num(c.units).toFixed(2)+" units", inr2(num(c.cost)), i);
+  }).join("") : '<div class="empty">// nothing logged yet — add a ride or a charge</div>';
+}
+function row(cls,tag,t1,t2,amt,i){
+  return `<div class="item" style="--i:${Math.min(i,10)}"><div class="ico ${cls}">${tag}</div>
+    <div class="mid"><div class="t1">${t1}</div><div class="t2">${t2}</div></div>
+    <div class="amt">${amt}</div></div>`;
+}
+
+/* ---------- Chart (vanilla canvas, animated) ---------- */
+let chartRaf = 0;
+function animateChart(){
+  cancelAnimationFrame(chartRaf);
+  if(reduceMotion()){ drawChart(1); return; }
+  const t0 = performance.now(), dur = 900;
+  const step = t => {
+    const p = Math.min(1,(t-t0)/dur);
+    drawChart(1-Math.pow(1-p,3));
+    if(p<1) chartRaf = requestAnimationFrame(step);
+  };
+  chartRaf = requestAnimationFrame(step);
+}
+function drawChart(prog){
+  const cv = $("chart"), st = S.settings;
+  const dpr = window.devicePixelRatio||1;
+  const W = cv.clientWidth||320, H = 200;
+  cv.width = W*dpr; cv.height = H*dpr;
+  const g = cv.getContext("2d"); g.scale(dpr,dpr); g.clearRect(0,0,W,H);
+  const keys=[], now=new Date();
+  for(let i=5;i>=0;i--){ const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+    keys.push(d.toISOString().slice(0,7)); }
+  const km={}, ev={};
+  S.rides.forEach(r=>{ const k=(r.date||"").slice(0,7); km[k]=(km[k]||0)+num(r.km); });
+  S.charges.forEach(c=>{ const k=(c.date||"").slice(0,7); ev[k]=(ev[k]||0)+num(c.cost); });
+  const pet = keys.map(k=> st.mileage>0 ? (km[k]||0)/st.mileage*st.petrol : 0);
+  const evv = keys.map(k=> ev[k]||0);
+  const max = Math.max(...pet, ...evv, 10);
+  const padL=8, padB=24, padT=14, cw=(W-padL-8)/6;
+  g.strokeStyle="rgba(16,32,58,.9)";
+  g.beginPath(); g.moveTo(0,H-padB+.5); g.lineTo(W,H-padB+.5); g.stroke();
+  g.textAlign="center";
+  keys.forEach((k,i)=>{
+    const pi = Math.max(0, Math.min(1, prog*1.45 - i*0.09));
+    const cx = padL + i*cw + cw/2, bw = Math.min(16, cw/3);
+    const hp = (H-padB-padT)*pet[i]/max*pi, he = (H-padB-padT)*evv[i]/max*pi;
+    // petrol bar (hot) + EV bar (cold gradient + glow)
+    g.fillStyle="rgba(255,144,56,.8)"; roundBar(g, cx-bw-2, H-padB-hp, bw, hp);
+    const grad = g.createLinearGradient(0,H-padB-he,0,H-padB);
+    grad.addColorStop(0,"#21c7ff"); grad.addColorStop(1,"#0e7fd9");
+    g.save(); g.shadowColor="rgba(33,199,255,.45)"; g.shadowBlur=10;
+    g.fillStyle=grad; roundBar(g, cx+2, H-padB-he, bw, he); g.restore();
+    g.fillStyle="rgba(90,115,146,1)"; g.font="9px 'IBM Plex Mono', monospace";
+    g.fillText(new Date(k+"-01T00:00").toLocaleDateString("en-IN",{month:"short"}).toUpperCase(), cx, H-8);
+    const svm = pet[i]-evv[i];
+    if(svm>1 && prog>0.85){
+      g.save(); g.globalAlpha=(prog-0.85)/0.15;
+      g.fillStyle="#54f0a8"; g.font="600 9px 'IBM Plex Mono', monospace";
+      g.fillText("+"+inr(svm), cx, Math.max(11, H-padB-Math.max(hp,he)-7));
+      g.restore();
+    }
+  });
+  function roundBar(g,x,y,w,h){ if(h<=0.5) return; const r=Math.min(2,w/2,h);
+    g.beginPath(); g.moveTo(x,y+h); g.lineTo(x,y+r); g.arcTo(x,y,x+r,y,r);
+    g.arcTo(x+w,y,x+w,y+r,r); g.lineTo(x+w,y+h); g.closePath(); g.fill(); }
+}
+window.addEventListener("resize", ()=>{ if($("view-dash").classList.contains("active")) drawChart(1); });
+
+/* ---------- Rides ---------- */
+let editRide = null;
+$("rMin").addEventListener("input", autoSpeed);
+$("rKm").addEventListener("input", autoSpeed);
+function autoSpeed(){
+  const km=num($("rKm").value), min=num($("rMin").value);
+  if(km>0 && min>0) $("rSpd").value = (km/(min/60)).toFixed(1);
+}
+$("rSave").onclick = () => {
+  const km = num($("rKm").value);
+  if(!$("rDate").value || km<=0) return toast("Enter date and distance");
+  const r = { id: editRide||uid(), date:$("rDate").value, km,
+    min:num($("rMin").value)||null, spd:num($("rSpd").value)||null,
+    eff:num($("rEff").value)||null, eco:num($("rEco").value)||null,
+    ride:num($("rRide").value)||null, notes:$("rNotes").value.trim() };
+  if(editRide){ S.rides = S.rides.map(x=>x.id===editRide?r:x); toast("Ride updated"); }
+  else { S.rides.push(r); toast("Ride saved ✓"); }
+  burst($("rSave"));
+  save(); resetRideForm(); renderRides();
+};
+$("rCancel").onclick = resetRideForm;
+function resetRideForm(){
+  editRide=null; ["rKm","rMin","rSpd","rEff","rEco","rRide","rNotes"].forEach(i=>$(i).value="");
+  $("rDate").value = todayStr();
+  $("rideFormTitle").textContent="Log a ride"; $("rSave").textContent="Save ride";
+  $("rCancel").style.display="none";
+}
+function renderRides(){
+  const list = [...S.rides].sort((a,b)=>b.date.localeCompare(a.date));
+  $("rideList").innerHTML = list.length ? list.map((r,i)=>{
+    const chips = [r.min?r.min+" min":null, r.spd?r.spd+" km/h":null,
+      r.eff?r.eff+" km/unit":null].filter(Boolean).map(c=>`<span class="chip">${c}</span>`).join("");
+    const modes = (r.eco||r.ride) ? `<span class="chip">ECO ${r.eco||0} · RIDE ${r.ride||0} km</span>` : "";
+    return `<div class="item" style="--i:${Math.min(i,12)}" data-id="${r.id}">
+      <div class="ico ride">RID</div>
+      <div class="mid" onclick="editRideFn('${r.id}')">
+        <div class="t1">${fmtDate(r.date)} · ${r.km} km${r.notes? " · "+esc(r.notes):""}</div>
+        <div class="t2">${chips}${modes}</div></div>
+      <button class="del" onclick="delRide('${r.id}')">✕</button></div>`;
+  }).join("") : '<div class="empty">// no rides yet — log your first one</div>';
+}
+window.editRideFn = id => {
+  const r = S.rides.find(x=>x.id===id); if(!r) return;
+  editRide=id; $("rDate").value=r.date; $("rKm").value=r.km; $("rMin").value=r.min||"";
+  $("rSpd").value=r.spd||""; $("rEff").value=r.eff||""; $("rEco").value=r.eco||"";
+  $("rRide").value=r.ride||""; $("rNotes").value=r.notes||"";
+  $("rideFormTitle").textContent="Edit ride"; $("rSave").textContent="Update ride";
+  $("rCancel").style.display="flex"; window.scrollTo({top:0,behavior:"smooth"});
+};
+window.delRide = id => { if(!confirm("Delete this ride?")) return;
+  S.rides = S.rides.filter(x=>x.id!==id); save(); renderRides(); toast("Ride deleted"); };
+
+/* ---------- Charging ---------- */
+let editCharge = null;
+$("segHome").onclick = ()=>segTo("home"); $("segFast").onclick = ()=>segTo("fast");
+function segTo(t){
+  $("segHome").classList.toggle("on",t==="home"); $("segFast").classList.toggle("on",t==="fast");
+  $("segPill").style.transform = t==="home" ? "translateX(0)" : "translateX(100%)";
+  $("homeForm").style.display = t==="home"?"block":"none";
+  $("fastForm").style.display = t==="fast"?"block":"none";
+}
+["hFrom","hTo"].forEach(i=>$(i).addEventListener("input", autoUnits));
+$("hUnits").addEventListener("input", autoCost);
+$("hRate").addEventListener("input", autoCost);
+function autoUnits(){
+  const st=S.settings, f=num($("hFrom").value), t=num($("hTo").value);
+  if(t>f && t<=100){
+    const u = (t-f)/100 * st.batt / ((st.chgEff||90)/100);
+    $("hUnits").value = u.toFixed(2); autoCost();
+  }
+}
+function autoCost(){
+  const u=num($("hUnits").value), r=num($("hRate").value);
+  if(u>0 && r>0) $("hCost").value = (u*r).toFixed(2);
+}
+$("hSave").onclick = () => saveCharge("home");
+$("fSave").onclick = () => saveCharge("fast");
+function saveCharge(type){
+  const p = type==="home"
+    ? {date:$("hDate").value, from:num($("hFrom").value)||null, to:num($("hTo").value)||null,
+       units:num($("hUnits").value), cost:num($("hCost").value), rate:num($("hRate").value)||null,
+       notes:$("hNotes").value.trim(), loc:""}
+    : {date:$("fDate").value, from:null, to:null, units:num($("fUnits").value),
+       cost:num($("fCost").value), rate:null, notes:$("fNotes").value.trim(), loc:$("fLoc").value.trim()};
+  if(!p.date || p.units<=0) return toast("Enter date and units");
+  const c = Object.assign({id:editCharge||uid(), type}, p);
+  if(editCharge){ S.charges = S.charges.map(x=>x.id===editCharge?c:x); toast("Charge updated"); }
+  else { S.charges.push(c); toast(type==="home"?"Home charge saved ✓":"Fast charge saved ✓"); }
+  burst(type==="home" ? $("hSave") : $("fSave"));
+  save(); resetChargeForms(); renderCharges();
+}
+$("hCancel").onclick = resetChargeForms; $("fCancel").onclick = resetChargeForms;
+function resetChargeForms(){
+  editCharge=null;
+  ["hFrom","hTo","hUnits","hCost","hNotes","fUnits","fCost","fLoc","fNotes"].forEach(i=>$(i).value="");
+  $("hDate").value=todayStr(); $("fDate").value=todayStr();
+  $("hRate").value=S.settings.rate;
+  $("homeFormTitle").textContent="Home charging session"; $("hSave").textContent="Save home charge";
+  $("fastFormTitle").textContent="Fast charging session"; $("fSave").textContent="Save fast charge";
+  $("hCancel").style.display="none"; $("fCancel").style.display="none";
+}
+function renderCharges(){
+  const list = [...S.charges].sort((a,b)=>b.date.localeCompare(a.date));
+  $("chargeList").innerHTML = list.length ? list.map((c,i)=>{
+    const tag = c.type==="home"?"HOM":"DCF";
+    const t1 = fmtDate(c.date)+" · "+(c.type==="home"?"Home":"Fast")+(c.loc? " · "+esc(c.loc):"");
+    const bits = [num(c.units).toFixed(2)+" units",
+      c.from!=null&&c.to!=null ? c.from+"→"+c.to+"%" : null,
+      c.units>0 ? "₹"+(num(c.cost)/num(c.units)).toFixed(1)+"/unit" : null,
+      c.notes?esc(c.notes):null].filter(Boolean).join(" · ");
+    return `<div class="item" style="--i:${Math.min(i,12)}" data-id="${c.id}">
+      <div class="ico ${c.type}">${tag}</div>
+      <div class="mid" onclick="editChargeFn('${c.id}')">
+        <div class="t1">${t1}</div><div class="t2">${bits}</div></div>
+      <div class="amt">${inr2(num(c.cost))}</div>
+      <button class="del" onclick="delCharge('${c.id}')">✕</button></div>`;
+  }).join("") : '<div class="empty">// no charging sessions yet</div>';
+}
+window.editChargeFn = id => {
+  const c = S.charges.find(x=>x.id===id); if(!c) return;
+  editCharge=id; segTo(c.type);
+  if(c.type==="home"){
+    $("hDate").value=c.date; $("hFrom").value=c.from??""; $("hTo").value=c.to??"";
+    $("hUnits").value=c.units; $("hCost").value=c.cost; $("hRate").value=c.rate??S.settings.rate;
+    $("hNotes").value=c.notes||"";
+    $("homeFormTitle").textContent="Edit home charge"; $("hSave").textContent="Update";
+    $("hCancel").style.display="flex";
+  } else {
+    $("fDate").value=c.date; $("fUnits").value=c.units; $("fCost").value=c.cost;
+    $("fLoc").value=c.loc||""; $("fNotes").value=c.notes||"";
+    $("fastFormTitle").textContent="Edit fast charge"; $("fSave").textContent="Update";
+    $("fCancel").style.display="flex";
+  }
+  window.scrollTo({top:0,behavior:"smooth"});
+};
+window.delCharge = id => { if(!confirm("Delete this charging session?")) return;
+  S.charges = S.charges.filter(x=>x.id!==id); save(); renderCharges(); toast("Deleted"); };
+
+/* ---------- Settings ---------- */
+function loadSettingsForm(){
+  const st=S.settings;
+  $("sName").value=st.name; $("sBatt").value=st.batt; $("sChgEff").value=st.chgEff;
+  $("sVehCost").value=st.vehCost; $("sRate").value=st.rate;
+  $("sPetrol").value=st.petrol; $("sMileage").value=st.mileage;
+}
+$("sSave").onclick = () => {
+  S.settings = { name:$("sName").value.trim()||DEFAULTS.name,
+    batt:num($("sBatt").value)||DEFAULTS.batt,
+    chgEff:num($("sChgEff").value)||DEFAULTS.chgEff,
+    vehCost:num($("sVehCost").value)||DEFAULTS.vehCost,
+    rate:num($("sRate").value)||DEFAULTS.rate,
+    petrol:num($("sPetrol").value)||DEFAULTS.petrol,
+    mileage:num($("sMileage").value)||DEFAULTS.mileage };
+  save(); $("hRate").value=S.settings.rate; $("hdrName").textContent=S.settings.name;
+  burst($("sSave")); toast("Settings saved ✓");
+};
+
+/* ---------- Export / Import ---------- */
+function download(name, text, mime){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([text],{type:mime})); a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+$("expJson").onclick = () =>
+  download("ather-tracker-backup-"+todayStr()+".json", JSON.stringify(S,null,2), "application/json");
+$("expCsv").onclick = () => {
+  const q = v => '"'+String(v??"").replace(/"/g,'""')+'"';
+  let csv = "RIDES\ndate,km,duration_min,avg_speed,efficiency_km_per_unit,eco_km,ride_km,notes\n";
+  [...S.rides].sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{
+    csv += [r.date,r.km,r.min??"",r.spd??"",r.eff??"",r.eco??"",r.ride??"",q(r.notes)].join(",")+"\n"; });
+  csv += "\nCHARGES\ndate,type,from_pct,to_pct,units_kwh,cost_inr,rate_inr_per_unit,location,notes\n";
+  [...S.charges].sort((a,b)=>a.date.localeCompare(b.date)).forEach(c=>{
+    csv += [c.date,c.type,c.from??"",c.to??"",c.units,c.cost,c.rate??"",q(c.loc),q(c.notes)].join(",")+"\n"; });
+  download("ather-tracker-"+todayStr()+".csv", csv, "text/csv");
+};
+$("impJson").onclick = () => $("impFile").click();
+$("impFile").onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try{
+      const d = JSON.parse(rd.result);
+      if(!d.settings || !Array.isArray(d.rides) || !Array.isArray(d.charges)) throw 0;
+      if(!confirm("Replace all current data with this backup?")) return;
+      S = d; S.settings = Object.assign({}, DEFAULTS, S.settings);
+      save(); initForms(); renderAll(); toast("Backup restored ✓");
+    }catch(_){ toast("Not a valid backup file"); }
+  };
+  rd.readAsText(f); e.target.value="";
+};
+$("wipe").onclick = () => {
+  if(!confirm("Delete ALL rides, charges and settings?")) return;
+  if(!confirm("Really sure? This cannot be undone.")) return;
+  S = {settings:{...DEFAULTS}, rides:[], charges:[]};
+  save(); initForms(); renderAll(); toast("All data deleted");
+};
+
+/* ---------- Init ---------- */
+function esc(s){ return String(s).replace(/[&<>"']/g, m =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
+function initForms(){ resetRideForm(); resetChargeForms(); loadSettingsForm(); }
+function renderAll(){ renderDash(); renderRides(); renderCharges(); }
+$("hdrDate").textContent = new Date().toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"}).toUpperCase();
+initForms(); renderAll();
+movePill(document.querySelector("nav button.on"));
+if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
+</script>
+</body>
+</html>
